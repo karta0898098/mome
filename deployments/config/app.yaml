@@ -1,0 +1,24 @@
+---
+log:
+  # env: add env tag to all log,
+  # it can be empty
+  env: 'local'
+  # app: add app tag to all log
+  # it can be empty
+  app: 'mome'
+  # logging level
+  # trace = -1
+  # debug = 0
+  # info = 1
+  level: 0
+  # the log will be colorful, when fale will be json output
+  debug: true
+grpc:
+  # this app grpc listen port
+  port: ':8181'
+  # grpc log events
+  # access log : 0
+  # request dump log : 1
+  # response dump log : 2
+  logEvents:
+    - 0

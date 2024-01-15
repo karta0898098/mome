@@ -1,7 +1,7 @@
 ---
 with-expecter: true
 packages:
-  github.com/karta0898098/mome/pkg:
+  github.com/karta0898098/mome/pkg/order:
     config:
       all: true
       dir: "./pkg/mocks"

@@ -1,14 +1,3 @@
-/*
- * Copyright (c) 2023.
- * D-Link Corporation.
- * All rights reserved.
- *
- * The information contained herein is confidential and proprietary to
- * D-Link. Use of this information by anyone other than authorized employees
- * of D-Link is granted only under a written non-disclosure agreement,
- * expressly prescribing the scope and manner of such use.
- */
-
 package logging
 
 import "fmt"
