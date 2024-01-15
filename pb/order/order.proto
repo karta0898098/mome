@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+option go_package = ".;order";
+
+package order;
+
+service OrderMatchingService{
+    rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderReply) {}
+}
+
+enum OrderParams{
+    ORDER_PARAMS_UNKNOWN = 0;
+    ORDER_PARAMS_STOP = 1; // stop order (has to have stop price set)
+    ORDER_PARAMS_AON = 2; // all-or-nothing - complete fill or cancel
+    ORDER_PARAMS_IOC = 3; // immediate-or-cancel - immediately fill what you can, cancel the rest
+    ORDER_PARAMS_FOK = 4; // immediately try to fill the whole order
+    ORDER_PARAMS_GTC = 5; // good-till-cancelled -  keep order active until manually cancelled
+    ORDER_PARAMS_GFD = 6; // good-for-day keep order active until the end of the trading day
+    ORDER_PARAMS_GTD = 7; // good-till-date - keep order active until the provided date (including the date)
+}
+
+enum OrderKind{
+    ORDER_KIND_UNKNOWN = 0;
+    ORDER_KIND_MARKET = 1;
+    ORDER_KIND_LIMIT = 2;
+}
+
+enum OrderSide{
+    ORDER_SIDE_UNKNOWN = 0;
+    ORDER_SIDE_BUY = 1;
+    ORDER_SIDE_SELL = 2;
+}
+
+message Price{
+    int64 Coefficient = 1;
+
+    int32 Exponent = 2;
+}
+
+message SubmitOrderRequest {
+    string Symbol = 1;
+
+    string CustomerID = 2;
+
+    int64 Quantity = 3;
+
+    Price Price = 4;
+
+    Price StopPrice = 5;
+
+    OrderKind Kind = 6;
+
+    OrderSide Side = 7;
+
+    OrderParams Params = 8;
+}
+
+message SubmitOrderReply{
+    string OrderID = 1;
+
+    int64 CreatedAtMilli = 2;
+}

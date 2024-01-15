@@ -1,0 +1,9 @@
+---
+with-expecter: true
+packages:
+  github.com/karta0898098/mome/pkg:
+    config:
+      all: true
+      dir: "./pkg/mocks"
+      filename: "mock{{.InterfaceNameSnake}}.go"
+      outpkg: "mocks"
