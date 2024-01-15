@@ -30,36 +30,26 @@ func newComparator(priceDescending bool) Comparator {
 		ascending  bool = true
 		descending bool = false
 	)
-
 	sort := ascending
 	if priceDescending {
 		sort = descending
 	}
-
-	return func(x, y OrderTracker) bool {
-		// market orders first
-		if x.Kind == KindMarket && y.Kind != KindMarket {
+	return func(a, b OrderTracker) bool {
+		if a.Kind == KindMarket && b.Kind != KindMarket { // market orders first
 			return true
-		} else if x.Kind != KindMarket && y.Kind == KindMarket {
+		} else if a.Kind != KindMarket && b.Kind == KindMarket {
 			return false
-		} else if x.Kind == KindMarket && y.Kind == KindMarket {
-			// both market orders sort by time
-			return x.Timestamp < y.Timestamp
+		} else if a.Kind == KindMarket && b.Kind == KindMarket {
+			return a.Timestamp < b.Timestamp // if both market order by time
 		}
-
-		diff := x.Price - y.Price
-		// if prices are equal, compare timestamps
-		if diff == 0 {
-			return x.Timestamp < y.Timestamp
+		priceCmp := a.Price - b.Price // compare prices
+		if priceCmp == 0 {            // if prices are equal, compare timestamps
+			return a.Timestamp < b.Timestamp
 		}
-
-		// if x price is less than y return true if ascending, false if descending
-		if diff < 0 {
+		if priceCmp < 0 { // if a price is less than b return true if ascending, false if descending
 			return sort
 		}
-
-		// if x price is bigger than y return false if ascending, true if descending
-		return !sort
+		return !sort // if a price is bigger than b return false if ascending, true if descending
 	}
 }
 

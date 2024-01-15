@@ -7,9 +7,41 @@ import (
 
 	"github.com/cockroachdb/apd"
 	"github.com/google/uuid"
+	"github.com/rs/xid"
+	"github.com/stretchr/testify/suite"
 )
 
 const instrument = "TEST"
+
+type orderBookTestSuite struct {
+	suite.Suite
+
+	ob *OrderBook
+}
+
+func TestRun(t *testing.T) {
+	suite.Run(t, new(orderBookTestSuite))
+}
+
+func (suite *orderBookTestSuite) SetupTest() {
+	suite.ob = NewOrderBook(instrument, *apd.New(2025, -2), &NopRepository{})
+}
+
+func (suite *orderBookTestSuite) createOrder(id string, oType Kind, params Condition, qty int64, price, stopPrice apd.Decimal, side Side) Order {
+	return Order{
+		ID:           id,
+		TickerSymbol: instrument,
+		CustomerID:   xid.New().String(),
+		CreatedAt:    time.Now(),
+		Kind:         oType,
+		Params:       params,
+		Qty:          qty,
+		FilledQty:    0,
+		Price:        price,
+		StopPrice:    stopPrice,
+		Side:         side,
+	}
+}
 
 func createOrder(id string, oType Kind, params Condition, qty int64, price, stopPrice apd.Decimal, side Side) Order {
 	return Order{
@@ -28,438 +60,417 @@ func createOrder(id string, oType Kind, params Condition, qty int64, price, stop
 }
 
 func setup(coeff int64, exp int32) *OrderBook {
-
 	ob := NewOrderBook(instrument, *apd.New(coeff, exp), &NopRepository{})
 	return ob
 }
 
-func TestOrderBook_MarketReject(t *testing.T) {
-	ob := setup(2025, -2)
-
+func (suite *orderBookTestSuite) TestOrderBook_MarketReject() {
+	ob := suite.ob
 	ctx := context.Background()
-	matched, err := ob.Add(ctx, createOrder("1", KindMarket, 0, 5, apd.Decimal{}, apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
+
+	matched, err := ob.Add(ctx, createOrder(
+		"1",
+		KindMarket,
+		0,
+		5,
+		apd.Decimal{},
+		apd.Decimal{},
+		SideBuy,
+	))
+	suite.NoError(err)
+	suite.False(matched, "expected no match for market order, got a match")
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_MarketToLimit() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindMarket, 0, 2, apd.Decimal{}, apd.Decimal{}, SideSell),
+		},
 	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindMarket, 0, 2, apd.Decimal{}, apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
 	}
 }
 
-func TestOrderBook_MarketToLimit(t *testing.T) {
-	ob := setup(2025, -2)
-
+func (suite *orderBookTestSuite) TestOrderBook_LimitToMarket() {
+	ob := suite.ob
 	ctx := context.Background()
 
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindMarket, 0, 2, apd.Decimal{}, apd.Decimal{}, SideSell),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
 	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
 	}
-	matched, err = ob.Add(ctx, createOrder("2", KindMarket, 0, 2, apd.Decimal{}, apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
+
+	trade := <-ob.TradeEvents
+
+	suite.NotEmpty(trade)
+	suite.Equal(0, ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_No_Match() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 2, *apd.New(2025, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: false,
+			order:   createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
 	}
-	if !matched {
-		t.Errorf("expected match for market order, got no match")
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
+	}
+
+	suite.Equal(1, ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_Match() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
+	}
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
+	}
+
+	suite.Equal(0, ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_Match_FullQty() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
+	}
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
+	}
+
+	suite.Equal(0, ob.orders.Asks.Len())
+	suite.Equal(0, ob.orders.Bids.Len())
+	suite.NotEqual(0, ob.activeOrders)
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_First_AON_Reject() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, ConditionAON, 5, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: false,
+			order:   createOrder("2", KindLimit, 0, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
+	}
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
 	}
 }
 
-func TestOrderBook_LimitToMarket(t *testing.T) {
-	ob := setup(2025, -2)
-
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_Second_AON_Reject() {
+	ob := suite.ob
 	ctx := context.Background()
 
-	matched, err := ob.Add(ctx, createOrder("1", KindMarket, 0, 2, apd.Decimal{}, apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: false,
+			order:   createOrder("2", KindLimit, ConditionAON, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
 	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if !matched {
-		t.Errorf("expected match for market order, got no match")
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
 	}
 
-	if ob.orders.Asks.Len() != 0 {
-		t.Errorf("expected 0 asks, got %d", ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_First_IOC_Reject() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, ConditionIOC, 3, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: false,
+			order:   createOrder("2", KindLimit, 0, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
 	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
+	}
+
+	suite.Equal(0, ob.orders.Asks.Len())
+	suite.Equal(1, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Limit_To_Limit_Second_IOC() {
+	ob := suite.ob
+	ctx := context.Background()
+
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 3, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindLimit, ConditionIOC, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
+	}
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
+	}
+
+	suite.Equal(1, ob.orders.Asks.Len())
+	suite.Equal(0, ob.orders.Bids.Len())
+}
+
+func (suite *orderBookTestSuite) TestOrderBook_Add_Bids() {
+	// test order sorting
+	ob := suite.ob
+	t := suite.T()
+
+	BaseContext := apd.Context{
+		Precision:   0,               // no rounding
+		MaxExponent: apd.MaxExponent, // up to 10^5 exponent
+		MinExponent: apd.MinExponent, // support only 4 decimal places
+		Traps:       apd.DefaultTraps,
+	}
+	ctx := context.Background()
+
+	type orderData struct {
+		ID        string
+		Kind      Kind
+		Params    Condition
+		Qty       int64
+		Price     apd.Decimal
+		StopPrice apd.Decimal
+		Side      Side
+	}
+
+	data := []orderData{
+		{"0", KindLimit, 0, 5, *apd.New(2010, -2), apd.Decimal{}, SideBuy},
+		{"1", KindMarket, ConditionAON, 11, apd.Decimal{}, apd.Decimal{}, SideBuy},
+		{"2", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideBuy},
+		{"3", KindLimit, 0, 2, *apd.New(2065, -2), apd.Decimal{}, SideBuy},
+		{"4", KindMarket, 0, 4, apd.Decimal{}, apd.Decimal{}, SideBuy},
+	}
+	sorted := []int{1, 4, 3, 0, 2}
+
+	for _, d := range data {
+		_, _ = ob.Add(ctx, createOrder(d.ID, d.Kind, d.Params, d.Qty, d.Price, d.StopPrice, d.Side))
+	}
+
+	i := 0
+	for iter := ob.orders.Bids.Iterator(); iter.Valid(); iter.Next() {
+		order := ob.activeOrders[iter.Key().ID]
+		expectedData := data[sorted[i]]
+
+		var priceEq, stopPriceEq apd.Decimal
+		_, err := BaseContext.Cmp(&priceEq, &expectedData.Price, &order.Price)
+		suite.NoError(err)
+
+		_, err = BaseContext.Cmp(&stopPriceEq, &expectedData.StopPrice, &order.StopPrice)
+		suite.NoError(err)
+
+		suite.Equal(expectedData.ID, order.ID)
+		suite.Equal(expectedData.Kind, order.Kind)
+		suite.Equal(expectedData.Params, order.Params)
+		suite.Equal(expectedData.Qty, order.Qty)
+		suite.Equal(expectedData.Side, order.Side)
+		i += 1
+		t.Logf("%+v", order)
 	}
 }
 
-func TestOrderBook_Limit_To_Limit_No_Match(t *testing.T) {
-	ob := setup(2025, -2)
+func (suite *orderBookTestSuite) TestOrderBook_Add_Asks() {
+	// test order sorting
+	ob := suite.ob
+	t := suite.T()
+
+	BaseContext := apd.Context{
+		Precision:   0,               // no rounding
+		MaxExponent: apd.MaxExponent, // up to 10^5 exponent
+		MinExponent: apd.MinExponent, // support only 4 decimal places
+		Traps:       apd.DefaultTraps,
+	}
 	ctx := context.Background()
 
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 2, *apd.New(2025, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
+	type orderData struct {
+		ID        string
+		Kind      Kind
+		Params    Condition
+		Qty       int64
+		Price     apd.Decimal
+		StopPrice apd.Decimal
+		Side      Side
 	}
 
-	if ob.orders.Asks.Len() != 1 {
-		t.Errorf("expected 1 ask, got %d", ob.orders.Asks.Len())
+	data := [...]orderData{
+		{"0", KindLimit, 0, 7, *apd.New(2000, -2), apd.Decimal{}, SideSell},
+		{"1", KindLimit, 0, 2, *apd.New(2013, -2), apd.Decimal{}, SideSell},
+		{"2", KindLimit, 0, 8, *apd.New(2000, -2), apd.Decimal{}, SideSell},
+		{"3", KindMarket, 0, 9, apd.Decimal{}, apd.Decimal{}, SideSell},
+		{"4", KindLimit, 0, 3, *apd.New(2055, -2), apd.Decimal{}, SideSell},
 	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
+
+	sorted := []int{3, 0, 2, 1, 4}
+
+	for _, d := range data {
+		_, _ = ob.Add(ctx, createOrder(d.ID, d.Kind, d.Params, d.Qty, d.Price, d.StopPrice, d.Side))
+	}
+
+	i := 0
+	for iter := ob.orders.Asks.Iterator(); iter.Valid(); iter.Next() {
+		order := ob.activeOrders[iter.Key().ID]
+		expectedData := data[sorted[i]]
+
+		var priceEq, stopPriceEq apd.Decimal
+		_, err := BaseContext.Cmp(&priceEq, &expectedData.Price, &order.Price)
+		suite.NoError(err)
+
+		_, err = BaseContext.Cmp(&stopPriceEq, &expectedData.StopPrice, &order.StopPrice)
+		suite.NoError(err)
+
+		suite.Equal(expectedData.ID, order.ID)
+		suite.Equal(expectedData.Kind, order.Kind)
+		suite.Equal(expectedData.Params, order.Params)
+		suite.Equal(expectedData.Qty, order.Qty)
+		suite.Equal(expectedData.Side, order.Side)
+		i += 1
+		t.Logf("%+v", order)
 	}
 }
 
-func TestOrderBook_Limit_To_Limit_Match(t *testing.T) {
-	ob := setup(2025, -2)
+func (suite *orderBookTestSuite) TestOrderBook_Add_MarketPrice_Change() {
 
-	ctx := context.Background()
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if !matched {
-		t.Errorf("expected a match for this order, got a match")
-	}
-
-	if ob.orders.Asks.Len() != 0 {
-		t.Errorf("expected 0 asks, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
-	}
-}
-
-func TestOrderBook_Limit_To_Limit_Match_FullQty(t *testing.T) {
-	ob := setup(2025, -2)
+	ob := suite.ob
 	ctx := context.Background()
 
-	o1 := createOrder("1", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideSell)
-	matched, err := ob.Add(ctx, o1)
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for market order, got a match")
-	}
-	o2 := createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy)
-	matched, err = ob.Add(ctx, o2)
-	if err != nil {
-		t.Error(err)
-	}
-	if !matched {
-		t.Errorf("expected a match for this order, got a match")
+	BaseContext := apd.Context{
+		Precision:   0,               // no rounding
+		MaxExponent: apd.MaxExponent, // up to 10^5 exponent
+		MinExponent: apd.MinExponent, // support only 4 decimal places
+		Traps:       apd.DefaultTraps,
 	}
 
-	if ob.orders.Asks.Len() != 0 {
-		t.Errorf("expected 0 asks, got %d", ob.orders.Asks.Len())
+	tests := []struct {
+		matched bool
+		order   Order
+	}{
+		{
+			matched: false,
+			order:   createOrder("1", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell),
+		},
+		{
+			matched: true,
+			order:   createOrder("2", KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy),
+		},
 	}
-	if ob.orders.Bids.Len() != 0 {
-		t.Errorf("expected 0 bids, got %d", ob.orders.Bids.Len())
+	for _, tt := range tests {
+		matched, err := ob.Add(ctx, tt.order)
+		suite.NoError(err)
+		suite.Equal(tt.matched, matched)
 	}
-	if len(ob.activeOrders) != 0 {
-		t.Errorf("expected 0 active orders, got %d", len(ob.activeOrders))
-	}
+
+	var eq apd.Decimal
+	_, err := BaseContext.Cmp(&eq, &ob.marketPrice, apd.New(2012, -2))
+	suite.NoError(err)
 }
-
-func TestOrderBook_Limit_To_Limit_First_AON_Reject(t *testing.T) {
-	ob := setup(2025, -2)
-
-	ctx := context.Background()
-
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, ConditionAON, 5, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, 0, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for  order, got a match")
-	}
-
-	if ob.orders.Asks.Len() != 1 {
-		t.Errorf("expected 1 ask, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
-	}
-}
-
-func TestOrderBook_Limit_To_Limit_Second_AON_Reject(t *testing.T) {
-	ob := setup(2025, -2)
-
-	ctx := context.Background()
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, ConditionAON, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for  order, got a match")
-	}
-
-	if ob.orders.Asks.Len() != 1 {
-		t.Errorf("expected 1 ask, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
-	}
-}
-
-func TestOrderBook_Limit_To_Limit_First_IOC_Reject(t *testing.T) {
-	ob := setup(2025, -2)
-
-	ctx := context.Background()
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, ConditionIOC, 3, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	if ob.orders.Asks.Len() != 0 {
-		t.Fatalf("expected no asks, got %d", ob.orders.Asks.Len())
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, 0, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	if ob.orders.Asks.Len() != 0 {
-		t.Errorf("expected 0 asks, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 1 {
-		t.Errorf("expected 1 bid, got %d", ob.orders.Bids.Len())
-	}
-}
-
-func TestOrderBook_Limit_To_Limit_Second_IOC(t *testing.T) {
-	ob := setup(2025, -2)
-
-	ctx := context.Background()
-
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 3, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, ConditionIOC, 2, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if !matched {
-		t.Errorf("expected a match for this order, got no matches")
-	}
-
-	if ob.orders.Asks.Len() != 1 {
-		t.Errorf("expected 1 ask, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 0 {
-		t.Errorf("expected 0 bids, got %d", ob.orders.Bids.Len())
-	}
-}
-
-func TestOrderBook_Limit_To_Limit_Second_IOC_CancelCheck(t *testing.T) {
-	ob := setup(2025, -2)
-
-	ctx := context.Background()
-	matched, err := ob.Add(ctx, createOrder("1", KindLimit, 0, 3, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-	if err != nil {
-		t.Error(err)
-	}
-	if matched {
-		t.Errorf("expected no match for this order, got a match")
-	}
-	matched, err = ob.Add(ctx, createOrder("2", KindLimit, ConditionIOC, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-	if err != nil {
-		t.Error(err)
-	}
-	if !matched {
-		t.Errorf("expected a match for this order, got no matches")
-	}
-
-	if ob.orders.Asks.Len() != 0 {
-		t.Errorf("expected 0 asks, got %d", ob.orders.Asks.Len())
-	}
-	if ob.orders.Bids.Len() != 0 {
-		t.Errorf("expected 0 bids, got %d", ob.orders.Bids.Len())
-	}
-	order := ob.activeOrders["1"]
-	if !order.IsCancelled() {
-		t.Log("IOC order should be cancelled after partial fill")
-	}
-	if order.FilledQty != 3 {
-		t.Logf("expected filled qty for IOC order %d, got %d", 3, order.FilledQty)
-	}
-	t.Logf("%+v", order)
-}
-
-// func TestOrderBook_Add_Bids(t *testing.T) {
-// 	// test order sorting
-// 	ob := setup(2025, -2)
-//
-// 	ctx := context.Background()
-// 	type orderData struct {
-// 		Type      OrderType
-// 		Params    OrderParams
-// 		Qty       int64
-// 		Price     apd.Decimal
-// 		StopPrice apd.Decimal
-// 		Side      OrderSide
-// 	}
-//
-// 	data := [...]orderData{
-// 		{KindLimit, 0, 5, *apd.New(2010, -2), apd.Decimal{}, SideBuy},
-// 		{KindMarket, ParamAON, 11, apd.Decimal{}, apd.Decimal{}, SideBuy},
-// 		{KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideBuy},
-// 		{KindLimit, 0, 2, *apd.New(2065, -2), apd.Decimal{}, SideBuy},
-// 		{KindMarket, 0, 4, apd.Decimal{}, apd.Decimal{}, SideBuy},
-// 	}
-//
-// 	for i, d := range data {
-// 		_, _ = ob.Add(createOrder(uint64(i+1), d.Type, d.Params, d.Qty, d.Price, d.StopPrice, d.Side))
-// 	}
-//
-// 	sorted := []int{1, 4, 3, 0, 2}
-//
-// 	i := 0
-// 	for iter := ob.orders.Bids.Iterator(); iter.Valid(); iter.Next() {
-// 		order := ob.activeOrders[iter.Key().OrderID]
-//
-// 		expectedData := data[sorted[i]]
-//
-// 		var priceEq, stopPriceEq apd.Decimal
-// 		if _, err := BaseContext.Cmp(&priceEq, &expectedData.Price, &order.Price); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if _, err := BaseContext.Cmp(&stopPriceEq, &expectedData.StopPrice, &order.StopPrice); err != nil {
-// 			t.Fatal(err)
-// 		}
-//
-// 		equals := uint64(sorted[i]+1) == order.ID && expectedData.Type == order.Type && expectedData.Params == order.Params && expectedData.Qty == order.Qty && priceEq.IsZero() && stopPriceEq.IsZero() && expectedData.Side == order.Side
-// 		if !equals {
-// 			t.Errorf("expected order ID %d to be in place %d, got a different order", sorted[i]+1, i)
-// 		}
-//
-// 		i += 1
-// 		t.Logf("%+v", order)
-// 	}
-// }
-//
-// func TestOrderBook_Add_Asks(t *testing.T) {
-// 	// test order sorting
-// 	_, ob := setup(2025, -2)
-//
-// 	type orderData struct {
-// 		Type      OrderType
-// 		Params    OrderParams
-// 		Qty       int64
-// 		Price     apd.Decimal
-// 		StopPrice apd.Decimal
-// 		Side      OrderSide
-// 	}
-//
-// 	data := [...]orderData{
-// 		{KindLimit, 0, 7, *apd.New(2000, -2), apd.Decimal{}, SideSell},
-// 		{KindLimit, 0, 2, *apd.New(2013, -2), apd.Decimal{}, SideSell},
-// 		{KindLimit, 0, 8, *apd.New(2000, -2), apd.Decimal{}, SideSell},
-// 		{KindMarket, 0, 9, apd.Decimal{}, apd.Decimal{}, SideSell},
-// 		{KindLimit, 0, 3, *apd.New(2055, -2), apd.Decimal{}, SideSell},
-// 	}
-//
-// 	for i, d := range data {
-// 		_, _ = ob.Add(createOrder(uint64(i+1), d.Type, d.Params, d.Qty, d.Price, d.StopPrice, d.Side))
-// 	}
-//
-// 	sorted := []int{3, 0, 2, 1, 4}
-//
-// 	i := 0
-// 	for iter := ob.orders.Asks.Iterator(); iter.Valid(); iter.Next() {
-// 		order := ob.activeOrders[iter.Key().OrderID]
-//
-// 		expectedData := data[sorted[i]]
-//
-// 		var priceEq, stopPriceEq apd.Decimal
-// 		if _, err := BaseContext.Cmp(&priceEq, &expectedData.Price, &order.Price); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if _, err := BaseContext.Cmp(&stopPriceEq, &expectedData.StopPrice, &order.StopPrice); err != nil {
-// 			t.Fatal(err)
-// 		}
-//
-// 		equals := uint64(sorted[i]+1) == order.ID && expectedData.Type == order.Type && expectedData.Params == order.Params && expectedData.Qty == order.Qty && priceEq.IsZero() && stopPriceEq.IsZero() && expectedData.Side == order.Side
-// 		if !equals {
-// 			t.Errorf("expected order ID %d to be in place %d, got a different order", sorted[i]+1, i)
-// 		}
-//
-// 		i += 1
-// 		t.Logf("%+v", order)
-// 	}
-// }
-//
-// func TestOrderBook_Add_MarketPrice_Change(t *testing.T) {
-// 	_, ob := setup(2025, -2)
-//
-// 	matched, err := ob.Add(createOrder(1, KindLimit, 0, 2, *apd.New(2010, -2), apd.Decimal{}, SideSell))
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	if matched {
-// 		t.Errorf("expected no match for market order, got a match")
-// 	}
-// 	matched, err = ob.Add(createOrder(2, KindLimit, 0, 5, *apd.New(2012, -2), apd.Decimal{}, SideBuy))
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	if !matched {
-// 		t.Errorf("expected a match for this order, got a match")
-// 	}
-// 	var eq apd.Decimal
-// 	if _, err := BaseContext.Cmp(&eq, &ob.marketPrice, apd.New(2012, -2)); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !eq.IsZero() {
-// 		t.Errorf("expected market price to be %f, got %s", 20.12, ob.marketPrice.String())
-// 	}
-// }
