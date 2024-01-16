@@ -22,3 +22,5 @@ grpc:
   # response dump log : 2
   logEvents:
     - 0
+    - 1
+    - 2

@@ -30,7 +30,7 @@ func NewOrderProviderImpl(orderBooks map[string]*order.OrderBook, orderRepo orde
 }
 
 func (srv *OrderProviderImpl) Start(ctx context.Context) {
-	go srv.processTradeEvents(ctx)
+	srv.processTradeEvents(ctx)
 }
 
 // SubmitOrder is implemented for order.Provider
@@ -72,6 +72,22 @@ func (srv *OrderProviderImpl) SubmitOrder(ctx context.Context, o order.Order) (e
 	}
 
 	return nil
+}
+
+func (srv *OrderProviderImpl) ListAllAsks(ctx context.Context, symbol string) (orders []order.Order, err error) {
+	orderBook, ok := srv.OrderBooks[symbol]
+	if !ok {
+		return nil, fmt.Errorf("this symbol is not in this group")
+	}
+	return orderBook.GetAsks(), nil
+}
+
+func (srv *OrderProviderImpl) ListAllBids(ctx context.Context, symbol string) (orders []order.Order, err error) {
+	orderBook, ok := srv.OrderBooks[symbol]
+	if !ok {
+		return nil, fmt.Errorf("this symbol is not in this group")
+	}
+	return orderBook.GetBids(), nil
 }
 
 func (srv *OrderProviderImpl) processTradeEvents(ctx context.Context) {

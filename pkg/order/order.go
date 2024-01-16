@@ -99,7 +99,8 @@ func NewOrder(
 	kind Kind,
 	params Condition,
 	qty int64,
-	price apd.Decimal,
+	price *apd.Decimal,
+	stopPrice *apd.Decimal,
 	side Side,
 ) (Order, error) {
 	return Order{
@@ -111,7 +112,8 @@ func NewOrder(
 		Params:       params,
 		Qty:          qty,
 		FilledQty:    0,
-		Price:        price,
+		Price:        *price,
+		StopPrice:    *stopPrice,
 		Side:         side,
 		Cancelled:    false,
 	}, nil

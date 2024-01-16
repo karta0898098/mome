@@ -16,12 +16,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func InitializesOTLPProvider() (func(ctx context.Context) error, error) {
+func InitializesOTLPProvider(serviceName string) (func(ctx context.Context) error, error) {
 	ctx := context.Background()
 
 	res, err := resource.New(ctx, resource.WithAttributes(
 		// the service name used to display traces in backends
-		semconv.ServiceName("message-controller"),
+		semconv.ServiceName(serviceName),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)
@@ -69,22 +69,7 @@ func InitializesOTLPProvider() (func(ctx context.Context) error, error) {
 }
 
 func InitializesLocalOTLPProvider() {
-	// Create a trace provider with a custom exporter (e.g., stdout exporter for testing)
-	// exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	// if err != nil {
-	// 	log.Fatal().Msgf("Error creating exporter: %v", err)
-	// }
-	// resources, _ := resource.New(
-	// 	context.Background(),
-	// 	resource.WithAttributes(
-	// 		attribute.String("service.name", "messageController"),
-	// 		attribute.String("library.language", "go"),
-	// 	),
-	// )
-	tp := sdktrace.NewTracerProvider(
-	// sdktrace.WithBatcher(exporter),
-	// sdktrace.WithResource(resources),
-	)
+	tp := sdktrace.NewTracerProvider()
 	otel.SetTracerProvider(tp)
 	// set global propagator to tracecontext (the default is no-op).
 	otel.SetTextMapPropagator(propagation.TraceContext{})

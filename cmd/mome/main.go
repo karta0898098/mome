@@ -28,12 +28,7 @@ func init() {
 }
 
 func main() {
-	logger := logging.SetupWithOption(
-		logging.WithLevel(logging.DebugLevel),
-		logging.WithDebug(true),
-	)
-
-	// new context to control all application lifetime
+	// new context to control all application lifetimes
 	// like gRPC server or background worker etc ...
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -46,13 +41,14 @@ func main() {
 		log.Fatal().Msgf("failed to new configuration %v", err)
 	}
 
+	logger := logging.Setup(configProvider.Get().Log)
+
 	// using otlp inject trace id
 	InitializesLocalOTLPProvider()
 
-	app := &Application{
-		cfg:    configProvider,
-		logger: logger,
-	}
+	app := NewApplication(configProvider, logger)
+
+	go app.startReceiveTrade(ctx, wg)
 	go app.startGRPCServer(ctx, wg)
 
 	// wait close signal
@@ -61,7 +57,7 @@ func main() {
 	<-quit
 
 	// send context done event
-	// let all worker or server graceful shutdown
+	// let all workers or server graceful shutdown
 	cancel()
 	wg.Wait()
 }

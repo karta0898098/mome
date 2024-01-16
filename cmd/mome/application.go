@@ -8,6 +8,8 @@ import (
 	pb "github.com/karta0898098/mome/pb/order"
 	"github.com/karta0898098/mome/pkg/configs"
 	"github.com/karta0898098/mome/pkg/interceptor"
+	"github.com/karta0898098/mome/pkg/order"
+	"github.com/karta0898098/mome/pkg/service"
 	grpctransport "github.com/karta0898098/mome/pkg/transport/grpc"
 
 	"github.com/rs/zerolog"
@@ -20,9 +22,25 @@ import (
 
 // Application contains this app need components
 type Application struct {
-	cfg     configs.ConfigurationProvider // Cfg is configuration provider. It provide all this application server need config.
-	logger  zerolog.Logger                // application logger
-	handler *grpctransport.OrderMatchingHandler
+	cfg      configs.ConfigurationProvider // Cfg is configuration provider. It provide all this application server need config.
+	logger   zerolog.Logger                // application logger
+	provider order.Provider
+	handler  *grpctransport.OrderMatchingHandler
+}
+
+func NewApplication(cfg configs.ConfigurationProvider, logger zerolog.Logger) *Application {
+	repo := new(order.NopRepository)
+	orderBooksFactory := &order.BooksFactory{Mode: "demo", OrderRepo: repo}
+	orderBooks := orderBooksFactory.Create()
+
+	provider := service.NewOrderProviderImpl(orderBooks, repo)
+
+	return &Application{
+		cfg:      cfg,
+		logger:   logger,
+		provider: provider,
+		handler:  grpctransport.NewOrderMatchingHandler(provider),
+	}
 }
 
 // startGRPCServer start grpc server
@@ -76,4 +94,13 @@ func (app *Application) startGRPCServer(ctx context.Context, wg *sync.WaitGroup)
 	server.GracefulStop()
 
 	app.logger.Info().Msgf("grpc server gracefully stopped")
+}
+
+func (app *Application) startReceiveTrade(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
+	app.provider.Start(ctx)
+
+	<-ctx.Done()
+	app.logger.Info().Msgf("recevie trade gracefully stopped")
 }
