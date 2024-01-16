@@ -22,6 +22,7 @@ type OrderProviderImpl struct {
 	OrderRepo  order.Repository
 }
 
+// NewOrderProviderImpl new OrderProviderImpl
 func NewOrderProviderImpl(orderBooks map[string]*order.OrderBook, orderRepo order.Repository) *OrderProviderImpl {
 	return &OrderProviderImpl{
 		OrderBooks: orderBooks,
@@ -29,6 +30,7 @@ func NewOrderProviderImpl(orderBooks map[string]*order.OrderBook, orderRepo orde
 	}
 }
 
+// Start is implement for Provider
 func (srv *OrderProviderImpl) Start(ctx context.Context) {
 	srv.processTradeEvents(ctx)
 }
@@ -74,18 +76,20 @@ func (srv *OrderProviderImpl) SubmitOrder(ctx context.Context, o order.Order) (e
 	return nil
 }
 
+// ListAllAsks is implement for Provider
 func (srv *OrderProviderImpl) ListAllAsks(ctx context.Context, symbol string) (orders []order.Order, err error) {
 	orderBook, ok := srv.OrderBooks[symbol]
 	if !ok {
-		return nil, fmt.Errorf("this symbol is not in this group")
+		return nil, fmt.Errorf("this symbol is not in this group %w", order.ErrInvalidTickerSymbol)
 	}
 	return orderBook.GetAsks(), nil
 }
 
+// ListAllBids is implement for Provider
 func (srv *OrderProviderImpl) ListAllBids(ctx context.Context, symbol string) (orders []order.Order, err error) {
 	orderBook, ok := srv.OrderBooks[symbol]
 	if !ok {
-		return nil, fmt.Errorf("this symbol is not in this group")
+		return nil, fmt.Errorf("this symbol is not in this group %w", order.ErrInvalidTickerSymbol)
 	}
 	return orderBook.GetBids(), nil
 }

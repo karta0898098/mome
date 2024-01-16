@@ -4,14 +4,20 @@ option go_package = ".;order";
 
 package order;
 
+// OrderMatchingService define order matching service method
 service OrderMatchingService{
+    // Submit order to order matching engine
+    // Trade history will send by MQ when successful matching
     rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderReply){}
 
+    // List all asks orders include Limit and Market orders
     rpc ListAllAsks(ListAllAsksRequest) returns (ListAllAskReply){}
 
+    // List all bids orders include Limit and Market orders
     rpc ListAllBids(ListAllBidsRequest) returns (ListAllBidsReply){}
 }
 
+// OrderParams is enum of order params
 enum OrderParams{
     ORDER_PARAMS_UNKNOWN = 0;
     ORDER_PARAMS_STOP = 1; // stop order (has to have stop price set)
@@ -23,18 +29,21 @@ enum OrderParams{
     ORDER_PARAMS_GTD = 7; // good-till-date - keep order active until the provided date (including the date)
 }
 
+// OrderKind is enum the order kind
 enum OrderKind{
     ORDER_KIND_UNKNOWN = 0;
     ORDER_KIND_MARKET = 1;
     ORDER_KIND_LIMIT = 2;
 }
 
+// OrderSide is enum of the side
 enum OrderSide{
     ORDER_SIDE_UNKNOWN = 0;
     ORDER_SIDE_BUY = 1;
     ORDER_SIDE_SELL = 2;
 }
 
+// Order define order entity
 message Order{
     string ID = 1;
 
@@ -53,12 +62,14 @@ message Order{
     OrderParams Params = 8;
 }
 
+// Price is value object of price
 message Price{
     int64 Coefficient = 1;
 
     int32 Exponent = 2;
 }
 
+// SubmitOrderRequest define SubmitOrder request
 message SubmitOrderRequest {
     string Symbol = 1;
 
@@ -77,24 +88,30 @@ message SubmitOrderRequest {
     OrderParams Params = 8;
 }
 
+// SubmitOrderReply define SubmitOrder reply
 message SubmitOrderReply{
     string OrderID = 1;
 
+    // the order create at milliseconds
     int64 CreatedAtMilli = 2;
 }
 
+// ListAllAsksRequest define list all asks of request
 message ListAllAsksRequest{
     string Symbol = 1;
 }
 
+// ListAllAskReply define list all asks of reply
 message ListAllAskReply{
     repeated Order Orders = 1;
 }
 
+// ListAllBidsRequest define list all bids of request
 message ListAllBidsRequest{
     string Symbol = 1;
 }
 
+// ListAllBidsReply  define list all bids of reply
 message ListAllBidsReply{
     repeated Order Orders = 1;
 }

@@ -10,16 +10,20 @@ import (
 	"github.com/karta0898098/mome/pkg/order"
 )
 
+// check OrderMatchingHandler is implement for pb.OrderMatchingServiceServer
 var _ pb.OrderMatchingServiceServer = &OrderMatchingHandler{}
 
+// OrderMatchingHandler is handler convert gRPC request to service
 type OrderMatchingHandler struct {
 	provider order.Provider
 }
 
+// NewOrderMatchingHandler new OrderMatchingHandler method
 func NewOrderMatchingHandler(provider order.Provider) *OrderMatchingHandler {
 	return &OrderMatchingHandler{provider: provider}
 }
 
+// SubmitOrder is implement for pb.OrderMatchingServiceServer
 func (h *OrderMatchingHandler) SubmitOrder(ctx context.Context, req *pb.SubmitOrderRequest) (*pb.SubmitOrderReply, error) {
 	logger := log.Ctx(ctx)
 	logger.Debug().Interface("req", req).Msg("debug...")
@@ -77,6 +81,7 @@ func (h *OrderMatchingHandler) SubmitOrder(ctx context.Context, req *pb.SubmitOr
 	}, nil
 }
 
+// ListAllAsks is implement for pb.OrderMatchingServiceServer
 func (h *OrderMatchingHandler) ListAllAsks(ctx context.Context, req *pb.ListAllAsksRequest) (*pb.ListAllAskReply, error) {
 	orders, err := h.provider.ListAllAsks(ctx, req.Symbol)
 	if err != nil {
@@ -111,6 +116,7 @@ func (h *OrderMatchingHandler) ListAllAsks(ctx context.Context, req *pb.ListAllA
 	return reply, nil
 }
 
+// ListAllBids is implement for pb.OrderMatchingServiceServer
 func (h *OrderMatchingHandler) ListAllBids(ctx context.Context, req *pb.ListAllBidsRequest) (*pb.ListAllBidsReply, error) {
 	orders, err := h.provider.ListAllBids(ctx, req.Symbol)
 	if err != nil {

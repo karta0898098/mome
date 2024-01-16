@@ -66,7 +66,7 @@ func NewOrderBook(symbol string, marketPrice apd.Decimal, orderRepo Repository) 
 	}
 }
 
-// Get all bids ordered the same way they are matched.
+// GetBids Get all bids ordered the same way they are matched.
 func (o *OrderBook) GetBids() []Order {
 	o.orderMutex.RLock()
 	defer o.orderMutex.RUnlock()
@@ -78,7 +78,7 @@ func (o *OrderBook) GetBids() []Order {
 	return orders
 }
 
-// Get all asks ordered the same way they are matched.
+// GetAsks Get all asks ordered the same way they are matched.
 func (o *OrderBook) GetAsks() []Order {
 	o.orderMutex.RLock()
 	defer o.orderMutex.RUnlock()
@@ -89,7 +89,7 @@ func (o *OrderBook) GetAsks() []Order {
 	return orders
 }
 
-// Get all stop bids.
+// GetStopBids Get all stop bids.
 func (o *OrderBook) GetStopBids() []Order {
 	o.orderMutex.RLock()
 	defer o.orderMutex.RUnlock()
@@ -101,7 +101,7 @@ func (o *OrderBook) GetStopBids() []Order {
 	return orders
 }
 
-// Get all stop asks.
+// GetStopAsks Get all stop asks.
 func (o *OrderBook) GetStopAsks() []Order {
 	o.orderMutex.RLock()
 	defer o.orderMutex.RUnlock()
@@ -112,14 +112,14 @@ func (o *OrderBook) GetStopAsks() []Order {
 	return orders
 }
 
-// Get a market price.
+// MarketPrice Get a market price.
 func (o *OrderBook) MarketPrice() apd.Decimal {
 	o.marketPriceMutex.RLock()
 	defer o.marketPriceMutex.RUnlock()
 	return o.marketPrice
 }
 
-// Set a market price.
+// SetMarketPrice Set a market price.
 func (o *OrderBook) SetMarketPrice(ctx context.Context, price apd.Decimal, fPrice float64) {
 	o.marketPriceMutex.Lock()
 	o.marketPrice = price
@@ -385,6 +385,7 @@ func (o *OrderBook) matchOrder(ctx context.Context, orderPrice float64, order *O
 				fPrice = oppositePartialOrder.Price
 			default:
 				// handle error
+				return false, fmt.Errorf("not support order kind %w", ErrInternal)
 			}
 		case KindLimit:
 			myPrice := order.Price
@@ -406,7 +407,7 @@ func (o *OrderBook) matchOrder(ctx context.Context, orderPrice float64, order *O
 						fPrice = orderPrice
 					}
 				default:
-					// handle error
+					return false, fmt.Errorf("not support order kind 1 %w", ErrInternal)
 				}
 			} else {
 				// we're selling
@@ -426,11 +427,12 @@ func (o *OrderBook) matchOrder(ctx context.Context, orderPrice float64, order *O
 						fPrice = oppositePartialOrder.Price
 					}
 				default:
-					// handle error
+					return false, fmt.Errorf("not support order kind 2 %w", ErrInternal)
 				}
 			}
 		default:
 			// handle error
+			return false, fmt.Errorf("not support order kind 3 %w", ErrInternal)
 		}
 
 		if buying {
