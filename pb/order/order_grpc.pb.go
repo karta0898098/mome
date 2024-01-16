@@ -23,6 +23,8 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrderMatchingServiceClient interface {
 	SubmitOrder(ctx context.Context, in *SubmitOrderRequest, opts ...grpc.CallOption) (*SubmitOrderReply, error)
+	ListAllAsks(ctx context.Context, in *ListAllAsksRequest, opts ...grpc.CallOption) (*ListAllAskReply, error)
+	ListAllBids(ctx context.Context, in *ListAllBidsRequest, opts ...grpc.CallOption) (*ListAllBidsReply, error)
 }
 
 type orderMatchingServiceClient struct {
@@ -42,11 +44,31 @@ func (c *orderMatchingServiceClient) SubmitOrder(ctx context.Context, in *Submit
 	return out, nil
 }
 
+func (c *orderMatchingServiceClient) ListAllAsks(ctx context.Context, in *ListAllAsksRequest, opts ...grpc.CallOption) (*ListAllAskReply, error) {
+	out := new(ListAllAskReply)
+	err := c.cc.Invoke(ctx, "/order.OrderMatchingService/ListAllAsks", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderMatchingServiceClient) ListAllBids(ctx context.Context, in *ListAllBidsRequest, opts ...grpc.CallOption) (*ListAllBidsReply, error) {
+	out := new(ListAllBidsReply)
+	err := c.cc.Invoke(ctx, "/order.OrderMatchingService/ListAllBids", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderMatchingServiceServer is the server API for OrderMatchingService service.
 // All implementations should embed UnimplementedOrderMatchingServiceServer
 // for forward compatibility
 type OrderMatchingServiceServer interface {
 	SubmitOrder(context.Context, *SubmitOrderRequest) (*SubmitOrderReply, error)
+	ListAllAsks(context.Context, *ListAllAsksRequest) (*ListAllAskReply, error)
+	ListAllBids(context.Context, *ListAllBidsRequest) (*ListAllBidsReply, error)
 }
 
 // UnimplementedOrderMatchingServiceServer should be embedded to have forward compatible implementations.
@@ -55,6 +77,12 @@ type UnimplementedOrderMatchingServiceServer struct {
 
 func (UnimplementedOrderMatchingServiceServer) SubmitOrder(context.Context, *SubmitOrderRequest) (*SubmitOrderReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitOrder not implemented")
+}
+func (UnimplementedOrderMatchingServiceServer) ListAllAsks(context.Context, *ListAllAsksRequest) (*ListAllAskReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAllAsks not implemented")
+}
+func (UnimplementedOrderMatchingServiceServer) ListAllBids(context.Context, *ListAllBidsRequest) (*ListAllBidsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAllBids not implemented")
 }
 
 // UnsafeOrderMatchingServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -86,6 +114,42 @@ func _OrderMatchingService_SubmitOrder_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderMatchingService_ListAllAsks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAllAsksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderMatchingServiceServer).ListAllAsks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/order.OrderMatchingService/ListAllAsks",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderMatchingServiceServer).ListAllAsks(ctx, req.(*ListAllAsksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrderMatchingService_ListAllBids_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAllBidsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderMatchingServiceServer).ListAllBids(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/order.OrderMatchingService/ListAllBids",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderMatchingServiceServer).ListAllBids(ctx, req.(*ListAllBidsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrderMatchingService_ServiceDesc is the grpc.ServiceDesc for OrderMatchingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -96,6 +160,14 @@ var OrderMatchingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitOrder",
 			Handler:    _OrderMatchingService_SubmitOrder_Handler,
+		},
+		{
+			MethodName: "ListAllAsks",
+			Handler:    _OrderMatchingService_ListAllAsks_Handler,
+		},
+		{
+			MethodName: "ListAllBids",
+			Handler:    _OrderMatchingService_ListAllBids_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

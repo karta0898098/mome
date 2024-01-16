@@ -5,7 +5,11 @@ option go_package = ".;order";
 package order;
 
 service OrderMatchingService{
-    rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderReply) {}
+    rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderReply){}
+
+    rpc ListAllAsks(ListAllAsksRequest) returns (ListAllAskReply){}
+
+    rpc ListAllBids(ListAllBidsRequest) returns (ListAllBidsReply){}
 }
 
 enum OrderParams{
@@ -29,6 +33,24 @@ enum OrderSide{
     ORDER_SIDE_UNKNOWN = 0;
     ORDER_SIDE_BUY = 1;
     ORDER_SIDE_SELL = 2;
+}
+
+message Order{
+    string ID = 1;
+
+    OrderKind Kind = 2;
+
+    Price Price = 3;
+
+    Price StopPrice = 4;
+
+    int64 CreatedAtMilli = 5;
+
+    int64 Quantity = 6;
+
+    int64 FilledQuantity = 7;
+
+    OrderParams Params = 8;
 }
 
 message Price{
@@ -60,3 +82,20 @@ message SubmitOrderReply{
 
     int64 CreatedAtMilli = 2;
 }
+
+message ListAllAsksRequest{
+    string Symbol = 1;
+}
+
+message ListAllAskReply{
+    repeated Order Orders = 1;
+}
+
+message ListAllBidsRequest{
+    string Symbol = 1;
+}
+
+message ListAllBidsReply{
+    repeated Order Orders = 1;
+}
+
