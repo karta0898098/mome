@@ -90,12 +90,12 @@ func (app *Application) startGRPCServer(ctx context.Context, wg *sync.WaitGroup)
 
 	<-ctx.Done()
 
-	// ignore error since it will be "Err shutting down server : context canceled"
 	server.GracefulStop()
 
 	app.logger.Info().Msgf("grpc server gracefully stopped")
 }
 
+// startReceiveTrade will process successful trade event
 func (app *Application) startReceiveTrade(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()

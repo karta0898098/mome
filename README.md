@@ -76,6 +76,15 @@ calculates transaction fees.
 
 ### Matching engine cluster
 
-Splitting the engine into different groups based on stock codes, each 'me cluster' handles a specific trading volume.
+Splitting the engine into different groups based on stock symbol, each 'me cluster' handles a specific trading volume.
 Designing the 'me cluster' to use Raft for maintaining data consistency within the cluster.
 
+"me-cluster" uses a data structure based on RBTree for the matching process.
+The average Big O of RBTree is O(log N),
+allowing for fast insertion and deletion of data, making it well-suited for matching scenarios."
+
+With the adoption of this solution, the recovery mechanism becomes crucial.
+
+Utilizing the Raft protocol to maintain the state of machines ensures consistency of data across all nodes. In the event
+of a leader failure, we can swiftly transition to another node to uphold service stability. Redis or PostgreSQL serve as
+the ultimate means for backing up data, as their speed surpasses that of maintaining data directly on the node.
